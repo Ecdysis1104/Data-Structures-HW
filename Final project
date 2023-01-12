@@ -1,0 +1,174 @@
+from typing import List
+from collections import namedtuple
+import time
+from typing import Tuple
+import math
+
+class Point(namedtuple("Point", "x y")):  # Define the class "point" with parameters x, y, representing the coordinates in the two-dimensional plane
+    def __repr__(self) -> str:
+        return f'Point{tuple(self)!r}'
+
+
+class Rectangle(namedtuple("Rectangle", "lower upper")):  # Define the "rectangle" class, with parameters lower and upper, representing the lower-left and upper-right points respectively
+    def __repr__(self) -> str:
+        return f'Rectangle{tuple(self)!r}'
+
+    def is_contains(self, p: Point) -> bool:  # Determine if a point is contained within a rectangular area
+        return self.lower.x <= p.x <= self.upper.x and self.lower.y <= p.y <= self.upper.y
+
+
+class Node(namedtuple("Node", "location left right")):
+    # Define nodes, with parameters location, left, right, representing plane coordinates, left node, right node
+    """
+    location: Point
+    left: Node
+    right: Node
+    """
+
+    def __repr__(self):
+        return f'{tuple(self)!r}'
+
+
+class KDTree:
+    """k-d tree"""
+
+    def __init__(self):
+        self._root = None  # Root node initialized to None
+        self._n = 0  # Depth initialized to 0
+
+    def insert(self, p: List[Point]):
+        """insert a list of points"""
+
+        def rec_ins(lst: List[Point], depth: int):  # Recursive insert function
+            if not lst:
+                return None
+            axis = depth % 2  # Determine the tangent axis
+            mid = len(lst) // 2  # Determining the median index
+            if axis == 0:  # Tangent by x-axis
+                lst.sort(key=lambda pt: pt.x)  # Sorted in ascending order by x-axis size
+            else:  # Tangent by y-axis
+                lst.sort(key=lambda pt: pt.y)  # Sorted in ascending order by y-axis size
+            left_lst = lst[:mid]  # List of left subtree coordinates
+            right_lst = lst[mid + 1:]  # List of right subtree coordinates
+            return Node(lst[mid], rec_ins(left_lst, depth + 1), rec_ins(right_lst, depth + 1))  # Recursive insertion
+
+        self._root = rec_ins(p, self._n)
+
+    def range(self, rectangle: Rectangle) -> List[Point]:
+        """range query"""
+        result = []  # The output is a list
+
+        def rec_ran(rec: Rectangle, node: Node, depth: int):  # Recursive range search function
+            if not node:
+                return None
+            axis = depth % 2  # Determining the tangent axis
+            if axis == 0:  # x as the tangent axis
+                if node.location.x < rec.lower.x:  # If x coordinate is smaller than the range, then search the right subtree
+                    rec_ran(rec, node.right, depth + 1)
+                elif node.location.x > rec.upper.x:  # If x coordinate is greater than the range, then search the left subtree
+                    rec_ran(rec, node.left, depth + 1)
+                else:  # If the x coordinate is in range, then search the left and right subtrees
+                    rec_ran(rec, node.right, depth + 1)
+                    rec_ran(rec, node.left, depth + 1)
+                    if rec.is_contains(node.location):  # Determine if the position of the node is within the rectangle
+                        """If in, add to the output list and continue searching the left and right subtrees"""
+                        result.append(node.location)
+
+
+            else:  # y as the tangent axis
+                if node.location.y < rec.lower.y:  # If y coordinate is smaller than the range, then search the right subtree
+                    rec_ran(rec, node.right, depth + 1)
+                elif node.location.y > rec.upper.y:  # If y coordinate is greater than the range, then search the left subtree
+                    rec_ran(rec, node.left, depth + 1)
+                else:  # If the y coordinate is in range, then search the left and right subtrees
+                    rec_ran(rec, node.right, depth + 1)
+                    rec_ran(rec, node.left, depth + 1)
+                    if rec.is_contains(node.location):  # Determine if the position of the node is within the rectangle
+                        """If in, add to the output list and continue searching the left and right subtrees"""
+                        result.append(node.location)
+
+        rec_ran(rectangle, self._root, self._n)  # Recursive Range Search
+        return result
+    def nearest_neighbor(self, p: Point) -> Tuple[Point, float]:
+        """
+        Find the nearest neighbor of a given point in the k-d tree
+        :param p: Point, the given point
+        :return: Tuple[Point, float], the nearest neighbor point and the distance
+        """
+        def rec_nn(node: Node, depth: int, best: Tuple[Point, float]) -> Tuple[Point, float]:
+            """
+            Recursive function for finding nearest neighbor
+            :param node: Node, the current node
+            :param depth: int, the current depth
+            :param best: Tuple[Point, float], the current best point and distance
+            :return: Tuple[Point, float], the nearest neighbor point and the distance
+            """
+            if node is None:
+                return best
+
+            axis = depth % 2
+            next_best = None
+            if axis == 0:
+                # Split along x-axis
+                if p.x < node.location.x:
+                    next_best = rec_nn(node.left, depth + 1, best)
+                    if next_best[1] > abs(p.x - node.location.x):
+                        next_best = rec_nn(node.right, depth + 1, next_best)
+                else:
+                    next_best = rec_nn(node.right, depth + 1, best)
+                    if next_best[1] > abs(p.x - node.location.x):
+                        next_best = rec_nn(node.left, depth + 1, next_best)
+            else:
+                # Split along y-axis
+                if p.y < node.location.y:
+                    next_best = rec_nn(node.left, depth + 1, best)
+                    if next_best[1] > abs(p.y - node.location.y):
+                        next_best = rec_nn(node.right, depth + 1, next_best)
+                else:
+                    next_best = rec_nn(node.right, depth + 1, best)
+                    if next_best[1] > abs(p.y - node.location.y):
+                        next_best = rec_nn(node.left, depth + 1, next_best)
+
+            dist = math.sqrt((node.location.x - p.x) ** 2 + (node.location.y - p.y) ** 2)
+            if dist < next_best[1]:
+                next_best = (node.location, dist)
+
+            return next_best
+
+        return rec_nn(self._root, self._n, (None, float("inf")))
+
+
+def range_test():
+    points = [Point(7, 2), Point(5, 4), Point(9, 6), Point(4, 7), Point(8, 1), Point(2, 3)]
+    kd = KDTree()
+    kd.insert(points)
+    result = kd.range(Rectangle(Point(0, 0), Point(6, 6)))
+    assert sorted(result) == sorted([Point(2, 3), Point(5, 4)])
+
+
+def performance_test():
+    points = [Point(x, y) for x in range(1000) for y in range(1000)]
+    kd = KDTree()
+    kd.insert(points)
+    for i in range(1,500):
+        lower = Point(i, i)
+        upper = Point(1000-i, 1000-i)
+        rectangle = Rectangle(lower, upper)
+        #  naive method
+        start = int(round(time.time() * 1000))
+        result1 = [p for p in points if rectangle.is_contains(p)]
+        end = int(round(time.time() * 1000))
+        print(f'Naive method: {end - start}ms')
+
+        # k-d tree
+        start = int(round(time.time() * 1000))
+        result2 = kd.range(rectangle)
+        end = int(round(time.time() * 1000))
+        print(f'K-D tree: {end - start}ms')
+
+        assert sorted(result1) == sorted(result2)
+
+
+if __name__ == '__main__':
+    range_test()
+    performance_test()
